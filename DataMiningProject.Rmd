@@ -20,6 +20,9 @@ library(rpart)
 
 ```{r}
 hotels_raw <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-02-11/hotels.csv', na = c("", "NA", "NULL"))
+```
+
+```{r, eval = FALSE}
 write_csv(hotels_raw, "~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
 
 hotels_raw <- read_csv("~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
