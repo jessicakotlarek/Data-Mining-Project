@@ -8,74 +8,265 @@ output: html_document
 ## Setup
 
 ```{r setup}
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(tidyverse)
+library(skimr)
+library(fBasics)
+library(caret)
 library(rpart)
-set.seed(8480)
-library("tidyverse")
 ```
 
 # 1. Load the Data
 
 ```{r}
-hotels_raw <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-02-11/hotels.csv')
+hotels_raw <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-02-11/hotels.csv', na = c("", "NA", "NULL"))
 write_csv(hotels_raw, "~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
 
 hotels_raw <- read_csv("~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
 ```
 
+#### Quick exploration of the data
+
 ```{r}
 head(hotels_raw)
 dim(hotels_raw)
-mean(hotels_raw$is_canceled)   # overall cancellation rate
+mean(hotels_raw$is_canceled)  # overall cancellation rate
 ```
+
+- 119,390 rows in the raw data with 32 columns
+
+- The overall cancellation rate is 37%
 
 # 2. Data Audit
 
+#### Checking for missing values
+
 ```{r}
 colSums(is.na(hotels_raw))
-# the only na values in the whole dataset are 4 observations in'children'
- 
-# however, when also checking for NULL or Undefined, we discover a lot more missing values
-sapply(hotels_raw, function(x) sum(is.na(x) | x %in% c("NULL", "Undefined", "na")))
-
-# Checking for odd values:
-
-# reservations with 0 guests
-sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE)
-# negative nightly rate 
-sum(hotels_raw$adr < 0)        
-
-# extreme nightly rate
-sum(hotels_raw$adr > 1000)   
 ```
 
-## Visualizations
+The vairables with missing data are:
+
+- children - 4
+
+- meal - 1169
+
+- country - 488
+
+- market_segment - 2
+
+- distribution channel - 5
+
+- agent - 16340
+
+- company - 112593
+
+## Dropping leakage variables
+
+reservation_status and reservation_status_date give the outcome (we just need the var is_canceled). assigned_room_type and booking_changes are updated after the booking is made.
 
 ```{r}
-# Used AI to help streamline this process
-cat_vars <- c("hotel", "meal", "market_segment", "distribution_channel",
-              "deposit_type", "customer_type", "reserved_room_type",
-              "is_repeated_guest", "arrival_date_month", "country", "agent")
+hotels_raw <- hotels_raw |>
+    select(-c(reservation_status, reservation_status_date, assigned_room_type, booking_changes))
+```
+
+## Changing data types
+
+```{r}
+str(hotels_raw)
+
+# Data documentation tells us "Undefined" = "SC"
+table(hotels_raw$meal) # "Undefined" level
+hotels_raw <- hotels_raw |>
+    mutate(meal = replace(meal, meal == "Undefined", "SC"),
+           meal = factor(meal, levels = c("SC", "BB", "HB", "FB"), ordered = TRUE))
+
+mean(is.na(hotels_raw$company)) # percent of company variable missing (94.3%)
+hotels_raw <- hotels_raw |>
+    mutate(has_company = ifelse(is.na(company), 0, 1)) 
+        
+
+hotels_raw <- hotels_raw |>
+    mutate(across(c(hotel, is_canceled, country, market_segment, distribution_channel,
+                    is_repeated_guest, reserved_room_type, deposit_type, agent,
+                    customer_type, has_company), as.factor),
+           arrival_date_month = factor(arrival_date_month, levels = month.name, ordered = TRUE))
+
+# Confirm
+str(hotels_raw)
+```
+
+**Ordinal:** arrival_date_month, meal (SC \< BB \< HB \< FB)
+
+**Nominal:** hotel, country, market_segment, distribution_channel, reserved_room_type, deposit_type, agent, customer_type
+
+**Binary:** is_canceled (target), is_repeated_guest, has_company
+
+## Modifying other data problems / Engineering new features
+
+```{r}
+hotels_raw |> skim()
+```
+
+```{r}
+# Problems found in the raw data 
+table(hotels_raw$market_segment) # "Undefined" level
+table(hotels_raw$distribution_channel) # "Undefined" level
+summary(hotels_raw$adr) # negative min, extreme max
+mean(is.na(hotels_raw$company)) # percent of company variable missing (94.3%)
+sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE) # 180 zero-guest bookings
+```
+
+```{r}
+hotels_raw <- hotels_raw |>
+    mutate(market_segment = replace(market_segment, market_segment == "Undefined", NA),
+           distribution_channel = replace(distribution_channel, distribution_channel == "Undefined", NA),
+           adr = replace(adr, adr < 0 | adr > 1000, NA),      # ASSUMPTION: impossible / extreme nightly rates
+           agent = replace_na(as.character(agent), "None"),   # ASSUMPTION: no agent = booked directly
+           total_nights = stays_in_weekend_nights + stays_in_week_nights,
+           total_guests = adults + coalesce(children, 0) + babies) |>
+    select(-company) # 94.3% of this variable is missing
+
+# ASSUMPTION: bookings with zero guests are data errors
+hotels_raw <- hotels_raw |> filter(total_guests > 0)
+```
+
+## Data Exploration (univariate)
+
+#### Target
+
+```{r}
+table(hotels_raw$is_canceled)
+prop.table(table(hotels_raw$is_canceled))
+```
+
+#### Summary stats
+
+```{r}
+hotels_raw |> select_if(is.numeric) |> basicStats()
+hotels_raw |> select_if(is.numeric) |> skewness(na.rm = TRUE)
+```
+
+#### Missing values
+
+```{r}
+missprop <- hotels_raw |> summarise(across(everything(), ~ sum(is.na(.)) / length(.)))
+print(missprop, width = Inf)
+```
+
+None of the variables that have missing data are missing THAT much of their data, which will hopefully make imputation easier and more reliable (we previously removed company with \~94.3% of its observations missing)
+
+#### Distribution plots
+
+#### Numeric plots
+
+```{r, fig.width = 4, fig.height = 3}
+num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
+
+for (v in num_vars) {
+    p <- ggplot(hotels_raw, aes(.data[[v]])) +
+        geom_histogram(bins = 50) +
+        ggtitle(v)
+    print(p)
+}
+```
+
+\*\* Ingishts:
+
+```{r}
+# This is odd
+sum(hotels_raw$total_guests > 10, na.rm = TRUE)
+sum(hotels_raw$total_guests > 20, na.rm = TRUE)
+```
+
+#### Categorical plots
+
+```{r, fig.width = 4, fig.height = 3}
+cat_vars <- hotels_raw |> select(where(is.factor)) |> names()
+
+# Country and agent have hundreds of levels, so their charts are unreadable
+# Skipping them in the loop and using a table instead
+cat_vars <- setdiff(cat_vars, c("country", "agent"))
+hotels_raw |> count(country, sort = TRUE) |> head(15)
+hotels_raw |> count(agent, sort = TRUE) |> head(15)
 
 for (v in cat_vars) {
-    p <- ggplot(hotels_raw, aes(x = .data[[v]], fill = factor(is_canceled))) +
+    p <- ggplot(hotels_raw, aes(reorder(.data[[v]], .data[[v]], function(x) -length(x)))) +
         geom_bar() +
-        labs(title = v, x = NULL, fill = "Canceled") +
+        xlab(v) +
+        geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.3, size = 2) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1))
     print(p)
 }
 ```
 
-```{r}
-num_vars <- c("lead_time", "adr", "total_nights", "total_guests",
-              "previous_cancellations", "previous_bookings_not_canceled",
-              "days_in_waiting_list", "required_car_parking_spaces",
-              "total_of_special_requests")
+\*\* Ingishts:
 
+## Data Exploration (bivariate)
+
+#### Graphics
+
+```{r}
+num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
+cat_vars <- hotels_raw |> select(where(is.factor)) |> names()
+cat_vars <- setdiff(cat_vars, c("is_canceled", "country", "agent"))  # drop target + too many levels
+```
+
+#### Numeric plots
+
+```{r, fig.width = 4, fig.height = 3}
 for (v in num_vars) {
-    p <- ggplot(hotels_raw, aes(x = .data[[v]], fill = factor(is_canceled))) +
-        geom_histogram(bins = 40) +
-        labs(title = v, fill = "Canceled")
+    p <- ggplot(hotels_raw, aes(x = is_canceled, y = .data[[v]], fill = is_canceled)) +
+        geom_boxplot(notch = TRUE) +
+        ggtitle(v)
     print(p)
 }
 ```
+
+#### Categorical plots
+
+```{r, fig.width = 5, fig.height = 3}
+for (v in cat_vars) {
+    p <- ggplot(hotels_raw, aes(x = .data[[v]], fill = is_canceled)) +
+        geom_bar(position = "dodge") +
+        xlab(v) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    print(p)
+}
+```
+
+#### Categorical mosaic plots
+
+```{r, fig.width = 5, fig.height = 4}
+for (v in cat_vars) {
+    mosaicplot(table(hotels_raw[[v]], hotels_raw$is_canceled),
+               main = paste("Mosaic Plot of", v, "by is_canceled"),
+               xlab = v, ylab = "is_canceled", color = TRUE)
+}
+```
+
+#### Summary stats by target (is_canceled)
+
+```{r}
+hotels_raw |> group_by(is_canceled) |> skim()
+```
+
+## Variable Importance
+
+```{r}
+
+```
+
+## Transformations
+
+```{r}
+
+```
+
+## Imputation
+
+```{r}
+
+```
+
+# ...
