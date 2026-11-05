@@ -1,0 +1,81 @@
+---
+title: "Data Mining Project"
+author: "Jess, Nick, Josh"
+date: "2026-11-03"
+output: html_document
+---
+
+## Setup
+
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(rpart)
+set.seed(8480)
+library("tidyverse")
+```
+
+# 1. Load the Data
+
+```{r}
+hotels_raw <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-02-11/hotels.csv')
+write_csv(hotels_raw, "~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
+
+hotels_raw <- read_csv("~/Documents/Villanova/Data Mining and Predictive Analytics - Yimin Zhang/Project/hotels.csv")
+```
+
+```{r}
+head(hotels_raw)
+dim(hotels_raw)
+mean(hotels_raw$is_canceled)   # overall cancellation rate
+```
+
+# 2. Data Audit
+
+```{r}
+colSums(is.na(hotels_raw))
+# the only na values in the whole dataset are 4 observations in'children'
+ 
+# however, when also checking for NULL or Undefined, we discover a lot more missing values
+sapply(hotels_raw, function(x) sum(is.na(x) | x %in% c("NULL", "Undefined", "na")))
+
+# Checking for odd values:
+
+# reservations with 0 guests
+sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE)
+# negative nightly rate 
+sum(hotels_raw$adr < 0)        
+
+# extreme nightly rate
+sum(hotels_raw$adr > 1000)   
+```
+
+## Visualizations
+
+```{r}
+# Used AI to help streamline this process
+cat_vars <- c("hotel", "meal", "market_segment", "distribution_channel",
+              "deposit_type", "customer_type", "reserved_room_type",
+              "is_repeated_guest", "arrival_date_month", "country", "agent")
+
+for (v in cat_vars) {
+    p <- ggplot(hotels_raw, aes(x = .data[[v]], fill = factor(is_canceled))) +
+        geom_bar() +
+        labs(title = v, x = NULL, fill = "Canceled") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    print(p)
+}
+```
+
+```{r}
+num_vars <- c("lead_time", "adr", "total_nights", "total_guests",
+              "previous_cancellations", "previous_bookings_not_canceled",
+              "days_in_waiting_list", "required_car_parking_spaces",
+              "total_of_special_requests")
+
+for (v in num_vars) {
+    p <- ggplot(hotels_raw, aes(x = .data[[v]], fill = factor(is_canceled))) +
+        geom_histogram(bins = 40) +
+        labs(title = v, fill = "Canceled")
+    print(p)
+}
+```
