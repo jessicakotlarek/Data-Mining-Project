@@ -129,6 +129,9 @@ hotels_raw <- hotels_raw |>
 
 # ASSUMPTION: bookings with zero guests are data errors
 hotels_raw <- hotels_raw |> filter(total_guests > 0)
+
+# Drop unused levels 
+hotels_raw <- hotels_raw |> droplevels()
 ```
 
 ## Data Exploration (univariate)
@@ -223,6 +226,8 @@ for (v in num_vars) {
 }
 ```
 
+\*\* Ingishts:
+
 #### Categorical plots
 
 ```{r, fig.width = 5, fig.height = 3}
@@ -235,15 +240,20 @@ for (v in cat_vars) {
 }
 ```
 
+\*\* Ingishts:
+
 #### Categorical mosaic plots
 
-```{r, fig.width = 5, fig.height = 4}
+```{r, fig.width = 6, fig.height = 5}
 for (v in cat_vars) {
     mosaicplot(table(hotels_raw[[v]], hotels_raw$is_canceled),
                main = paste("Mosaic Plot of", v, "by is_canceled"),
-               xlab = v, ylab = "is_canceled", color = TRUE)
+               xlab = v, ylab = "is_canceled", color = TRUE,
+               las = 2, cex.axis = 0.7)
 }
 ```
+
+\*\* Ingishts:
 
 #### Summary stats by target (is_canceled)
 
