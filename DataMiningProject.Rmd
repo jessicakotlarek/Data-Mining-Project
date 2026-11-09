@@ -17,6 +17,8 @@ library(skimr)
 library(fBasics)
 library(caret)
 library(rpart)
+library(partykit)
+library(pROC)
 ```
 
 # 1. Load the Data
@@ -75,8 +77,6 @@ The variables with missing data are:
 - market_segment - 0 (2 Undefined)
 
 - distribution channel - 0 (5 Undefined)
-
-- agent - 11729
 
 - company - 80361
 
@@ -301,9 +301,41 @@ hotels_raw |> group_by(is_canceled) |> skim()
 
 ## Variable Importance
 
-```{r}
 
+### Categorical Inputs
+
+```{r}
+hotels_raw |> 
+    summarize(across(where(is.factor) & !c(is_canceled), ~ chisq.test(., hotels_raw$is_canceled)$p.value)) |> 
+    unlist() |> 
+    sort()
+
+# Some of these are almost perfectly correlated due to rare levels, so we cannot blindly trust them.
 ```
+
+
+### Numeric Inputs
+
+Numerical input - t stat
+
+```{r}
+hotels_raw |> 
+    summarize(across(where(is.numeric), ~ t.test(. ~ is_canceled)$p.value)) |>
+    unlist() |> 
+    sort()
+```
+
+
+Numeric input - area under ROC curve for predicting target, using `caret`
+
+```{r}
+hotels_raw |> 
+    select(is_canceled, where(is.numeric)) |>  
+    filterVarImp(hotels_raw$is_canceled) |>  
+    slice(-1) |> 
+    arrange(desc(X1)) 
+```
+
 
 ## Transformations
 
