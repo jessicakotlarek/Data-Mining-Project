@@ -12,7 +12,6 @@ execute:
 ## Setup
 
 ```{r setup}
-knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 library(tidyverse)
 library(skimr)
 library(fBasics)
@@ -53,6 +52,13 @@ hotels_raw <- hotels_raw |> distinct()
 ```
 
 
+Checking data point for missing Market Segment
+```{r}
+hotels_raw |> filter(arrival_date_month == "August"& arrival_date_year == 2015 & arrival_date_week_number == 32 & is.na(children))
+```
+
+
+
 #### Checking for missing values
 
 ```{r}
@@ -60,17 +66,15 @@ colSums(is.na(hotels_raw))
 hotels_raw |> summarize(across(everything(), ~ sum(is.na(.))))
 ```
 
-The vairables with missing data are:
+The variables with missing data are:
 
 - children - 4
 
-- meal - 0 (1169?)
-
 - country - 452
 
-- market_segment - 0 (2?)
+- market_segment - 0 (2 Undefined)
 
-- distribution channel - 0 (5?)
+- distribution channel - 0 (5 Undefined)
 
 - agent - 11729
 
@@ -119,6 +123,7 @@ str(hotels_raw)
 
 ## Modifying other data problems / Engineering new features
 
+
 ```{r}
 hotels_raw |> skim()
 ```
@@ -129,7 +134,7 @@ table(hotels_raw$market_segment) # "Undefined" level
 table(hotels_raw$distribution_channel) # "Undefined" level
 summary(hotels_raw$adr) # negative min, extreme max
 mean(is.na(hotels_raw$company)) # percent of company variable missing (94%)
-sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE) # 180 zero-guest bookings
+sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE) # 166 zero-guest bookings
 ```
 
 ```{r}
@@ -173,6 +178,24 @@ print(missprop, width = Inf)
 ```
 
 None of the variables that have missing data are missing THAT much of their data, which will hopefully make imputation easier and more reliable (we previously removed company with \~94.3% of its observations missing)
+
+
+
+Checking how many observations have any missing values in the dataset, besides country
+```{r}
+hotels_raw |>
+  filter(!is.na(country), if_any(-country, is.na))
+```
+
+There are only 7 cases that are missing data (besides a value for `country`), so we will assume a complete case analysis compared against these missing values (excluding country).
+
+
+```{r}
+hotels_raw <- hotels_raw |> 
+  filter(if_all(-country, ~ !is.na(.)))
+```
+
+
 
 #### Distribution plots
 
@@ -291,13 +314,7 @@ hotels_raw |> group_by(is_canceled) |> skim()
 ## Imputation
 
 ```{r}
-#For logistic regression
-
-hotels_raw2 <- hotels_raw |> filter(!is.na(children)) # Only 4 rows total, but all were cancelled. Likely due to a miscommunication.
-
-hotels_raw2 <- hotels_raw2 |> filter(!is.na(distribution_channel)) #only 1 total
-
-hotels_raw2 <- hotels_raw2 |> filter(!(adr<0 | adr > 1000)) # ASSUMPTION: impossible / extreme nightly rates. Only 2 total
+#For logistic regression: since we decided not to impute for the 7 observations with missing values, we removed those from the whole dataset so all models can learn from the same points
 
 hotels_raw2 <- hotels_raw2 |> mutate(country = replace(country, is.na(country), "Unknown")) # 488 total
 ```
