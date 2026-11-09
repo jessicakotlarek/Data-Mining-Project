@@ -3,6 +3,10 @@ title: "Data Mining Project"
 author: "Jess, Nick, Josh"
 date: "2026-11-03"
 output: html_document
+execute:
+  echo: true
+  message: false
+  warning: false
 ---
 
 ## Setup
@@ -53,6 +57,7 @@ hotels_raw <- hotels_raw |> distinct()
 
 ```{r}
 colSums(is.na(hotels_raw))
+hotels_raw |> summarize(across(everything(), ~ sum(is.na(.))))
 ```
 
 The vairables with missing data are:
@@ -67,9 +72,9 @@ The vairables with missing data are:
 
 - distribution channel - 0 (5?)
 
-- agent - 12193
+- agent - 11729
 
-- company - 82137
+- company - 80361
 
 ## Dropping leakage variables
 
