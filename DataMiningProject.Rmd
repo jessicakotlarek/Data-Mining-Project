@@ -11,7 +11,7 @@ execute:
 
 ## Setup
 
-```{r setup}
+```{r setup, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(skimr)
 library(fBasics)
@@ -340,7 +340,9 @@ hotels_raw |>
 ## Transformations
 
 ```{r}
-
+TransformParams <- hotels_raw |>
+    preProcess(method = "YeoJohnson")
+TransformParams$yj
 ```
 
 ## Imputation
@@ -348,7 +350,8 @@ hotels_raw |>
 ```{r}
 #For logistic regression: since we decided not to impute for the 7 observations with missing values, we removed those from the whole dataset so all models can learn from the same points
 
-hotels_raw2 <- hotels_raw2 |> mutate(country = replace(country, is.na(country), "Unknown")) # 488 total
+hotels_raw2 <- hotels_raw |> 
+    mutate(country = fct_na_value_to_level(country, "Unknown")) # 447 total
 ```
 
 # ...
