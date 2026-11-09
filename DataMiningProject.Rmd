@@ -42,6 +42,13 @@ mean(hotels_raw$is_canceled)  # overall cancellation rate
 
 # 2. Data Audit
 
+#### Removing Duplicate Rows
+
+```{r}
+hotels_raw <- hotels_raw |> distinct()
+```
+
+
 #### Checking for missing values
 
 ```{r}
@@ -52,17 +59,17 @@ The vairables with missing data are:
 
 - children - 4
 
-- meal - 1169
+- meal - 0 (1169?)
 
-- country - 488
+- country - 452
 
-- market_segment - 2
+- market_segment - 0 (2?)
 
-- distribution channel - 5
+- distribution channel - 0 (5?)
 
-- agent - 16340
+- agent - 12193
 
-- company - 112593
+- company - 82137
 
 ## Dropping leakage variables
 
@@ -116,7 +123,7 @@ hotels_raw |> skim()
 table(hotels_raw$market_segment) # "Undefined" level
 table(hotels_raw$distribution_channel) # "Undefined" level
 summary(hotels_raw$adr) # negative min, extreme max
-mean(is.na(hotels_raw$company)) # percent of company variable missing (94.3%)
+mean(is.na(hotels_raw$company)) # percent of company variable missing (94%)
 sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TRUE) # 180 zero-guest bookings
 ```
 
