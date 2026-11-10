@@ -97,8 +97,10 @@ str(hotels_raw)
 # Data documentation tells us "Undefined" = "SC"
 table(hotels_raw$meal) # "Undefined" level
 hotels_raw <- hotels_raw |>
-    mutate(meal = replace(meal, meal == "Undefined", "SC"),
-           meal = factor(meal, levels = c("SC", "BB", "HB", "FB"), ordered = TRUE))
+    mutate(meal = case_when(meal == "Undefined" ~ "SC", 
+                            meal == "FB" ~ "HB", 
+                            TRUE ~ meal),
+           meal = factor(meal, levels = c("SC", "BB", "HB"), ordered = TRUE))
 
 mean(is.na(hotels_raw$company)) # percent of company variable missing (94.3%)
 hotels_raw <- hotels_raw |>
@@ -299,6 +301,38 @@ for (v in cat_vars) {
 hotels_raw |> group_by(is_canceled) |> skim()
 ```
 
+
+
+
+
+## Decision Tree to help consolidate levels
+
+```{r}
+# Market Segment
+ms_tree <- rpart(is_canceled ~ market_segment, data = hotels_raw)
+plot(as.party(ms_tree))
+
+# Distribution Channel
+dc_tree <- rpart(is_canceled ~ distribution_channel, data = hotels_raw)
+plot(as.party(dc_tree))
+```
+
+
+
+
+## Removing sparse categorical variables and re-categorizing levels
+
+```{r}
+hotels_raw <- hotels_raw |> 
+    select(-c(customer_type, meal, market_segment, distribution_channel, reserved_room_type, arrival_date_year)) |> 
+    mutate(country = case_when(country == "PRT" ~ "Portugal", 
+                               country %in% c("FRA", "GBR", "ESP", "IRL") ~ "Europe", 
+                               country == "Unknown" ~ "Unknown", 
+                               TRUE ~ "Foreign"))
+```
+
+
+
 ## Variable Importance
 
 
@@ -355,3 +389,6 @@ hotels_raw2 <- hotels_raw |>
 ```
 
 # ...
+
+
+
