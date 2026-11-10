@@ -374,7 +374,6 @@ TransformParams <- hotels_raw |>
     preProcess(method = "YeoJohnson")
 TransformParams$yj #based on YeoJohnson and looking at skewness/graph distributions, we will log transform lead_time, stays_in_weekend_nights, stays_in_week_nights, total_nights, total_guests, adr by log(x + 1)
 
-
 hotels_xf <- hotels_raw
 
 hotels_xf <- hotels_xf |>
@@ -386,7 +385,20 @@ hotels_xf <- hotels_xf |>
 
 hotels_xf |> select_if(is.numeric) |> skewness(na.rm = TRUE) #all transformed variables have improvement in skewness besides adr, may not be worth transforming
 
+for (v in num_vars) {
+    p <- ggplot(hotels_xf, aes(.data[[v]])) +
+        geom_histogram(bins = 50) +
+        ggtitle(v)
+    print(p)
+} #visibily all improved, besides adr, so we will keep the transformation on all transformed variables, besides adr
 
+
+hotels_xf_final <- hotels_xf |>
+    mutate(across(c(lead_time, stays_in_weekend_nights,
+          stays_in_week_nights,
+          total_nights, total_guests),
+        ~ log(. + 1)
+    )) 
 ```
 
 ## Imputation
