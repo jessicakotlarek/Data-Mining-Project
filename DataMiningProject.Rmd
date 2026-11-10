@@ -53,13 +53,11 @@ mean(hotels_raw$is_canceled)  # overall cancellation rate
 hotels_raw <- hotels_raw |> distinct()
 ```
 
-
 Checking data point for missing Market Segment
+
 ```{r}
 hotels_raw |> filter(arrival_date_month == "August"& arrival_date_year == 2015 & arrival_date_week_number == 32 & is.na(children))
 ```
-
-
 
 #### Checking for missing values
 
@@ -125,7 +123,6 @@ str(hotels_raw)
 
 ## Modifying other data problems / Engineering new features
 
-
 ```{r}
 hotels_raw |> skim()
 ```
@@ -181,9 +178,8 @@ print(missprop, width = Inf)
 
 None of the variables that have missing data are missing THAT much of their data, which will hopefully make imputation easier and more reliable (we previously removed company with \~94.3% of its observations missing)
 
-
-
 Checking how many observations have any missing values in the dataset, besides country
+
 ```{r}
 hotels_raw |>
   filter(!is.na(country), if_any(-country, is.na))
@@ -191,13 +187,10 @@ hotels_raw |>
 
 There are only 7 cases that are missing data (besides a value for `country`), so we will assume a complete case analysis compared against these missing values (excluding country).
 
-
 ```{r}
 hotels_raw <- hotels_raw |> 
   filter(if_all(-country, ~ !is.na(.)))
 ```
-
-
 
 #### Distribution plots
 
@@ -301,10 +294,6 @@ for (v in cat_vars) {
 hotels_raw |> group_by(is_canceled) |> skim()
 ```
 
-
-
-
-
 ## Decision Tree to help consolidate levels
 
 ```{r}
@@ -317,24 +306,27 @@ dc_tree <- rpart(is_canceled ~ distribution_channel, data = hotels_raw)
 plot(as.party(dc_tree))
 ```
 
-
-
-
 ## Removing sparse categorical variables and re-categorizing levels
 
 ```{r}
-hotels_raw <- hotels_raw |> 
-    select(-c(customer_type, meal, market_segment, distribution_channel, reserved_room_type, arrival_date_year)) |> 
-    mutate(country = case_when(country == "PRT" ~ "Portugal", 
-                               country %in% c("FRA", "GBR", "ESP", "IRL") ~ "Europe", 
-                               country == "Unknown" ~ "Unknown", 
-                               TRUE ~ "Foreign"))
+europe <- c("GBR", "ESP", "FRA", "IRL", "DEU", "ITA", "BEL", "NLD", "CHE", "AUT",
+            "SWE", "NOR", "DNK", "FIN", "ISL", "POL", "CZE", "SVK", "HUN", "ROU",
+            "BGR", "GRC", "HRV", "SVN", "SRB", "BIH", "MNE", "MKD", "ALB", "EST",
+            "LVA", "LTU", "LUX", "MLT", "CYP", "UKR", "BLR", "RUS", "AND", "MCO",
+            "SMR", "LIE", "GIB", "JEY", "GGY", "IMN", "FRO")
+# Left out: Turkey (TUR), Georgia (GEO), Armenia (ARM), Azerbaijan (AZE) and Kazakhstan (KAZ), which are partly in Asia. Also French overseas territories like Guadeloupe (GLP) and Mayotte (MYT), which aren’t in Europe geographically
+
+hotels_raw <- hotels_raw |>
+    mutate(country = case_when(is.na(country) | country == "Unknown" ~ "Unknown",
+                               country == "PRT" ~ "Portugal",
+                               country %in% europe ~ "Europe",
+                               TRUE ~ "Foreign"),
+           country = as.factor(country))
+
+hotels_raw |> group_by(country) |> summarise(n = n(), cancel_rate = mean(is_canceled == 1))
 ```
 
-
-
 ## Variable Importance
-
 
 ### Categorical Inputs
 
@@ -347,7 +339,6 @@ hotels_raw |>
 # Some of these are almost perfectly correlated due to rare levels, so we cannot blindly trust them.
 ```
 
-
 ### Numeric Inputs
 
 Numerical input - t stat
@@ -359,7 +350,6 @@ hotels_raw |>
     sort()
 ```
 
-
 Numeric input - area under ROC curve for predicting target, using `caret`
 
 ```{r}
@@ -369,7 +359,6 @@ hotels_raw |>
     slice(-1) |> 
     arrange(desc(X1)) 
 ```
-
 
 ## Transformations
 
@@ -389,6 +378,3 @@ hotels_raw2 <- hotels_raw |>
 ```
 
 # ...
-
-
-
