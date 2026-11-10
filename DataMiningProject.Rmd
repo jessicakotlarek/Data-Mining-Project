@@ -306,7 +306,7 @@ dc_tree <- rpart(is_canceled ~ distribution_channel, data = hotels_raw)
 plot(as.party(dc_tree))
 ```
 
-## Removing sparse categorical variables and re-categorizing levels
+## Re-categorizing levels of country
 
 ```{r}
 europe <- c("GBR", "ESP", "FRA", "IRL", "DEU", "ITA", "BEL", "NLD", "CHE", "AUT",
@@ -317,11 +317,12 @@ europe <- c("GBR", "ESP", "FRA", "IRL", "DEU", "ITA", "BEL", "NLD", "CHE", "AUT"
 # Left out: Turkey (TUR), Georgia (GEO), Armenia (ARM), Azerbaijan (AZE) and Kazakhstan (KAZ), which are partly in Asia. Also French overseas territories like Guadeloupe (GLP) and Mayotte (MYT), which aren’t in Europe geographically
 
 hotels_raw <- hotels_raw |>
-    mutate(country = case_when(is.na(country) | country == "Unknown" ~ "Unknown",
+    mutate(country = case_when(is.na(country) | country == "Unknown" ~ "Unknown", #447 total NA
                                country == "PRT" ~ "Portugal",
                                country %in% europe ~ "Europe",
                                TRUE ~ "Foreign"),
-           country = as.factor(country))
+           country = as.factor(country)) %>% 
+    select(-c(customer_type, meal, market_segment, distribution_channel, agent, reserved_room_type, arrival_date_year)) # drop these variables due to too many levels and/or sparse data; we do not believe these variables will help us out.
 
 hotels_raw |> group_by(country) |> summarise(n = n(), cancel_rate = mean(is_canceled == 1))
 ```
@@ -335,8 +336,6 @@ hotels_raw |>
     summarize(across(where(is.factor) & !c(is_canceled), ~ chisq.test(., hotels_raw$is_canceled)$p.value)) |> 
     unlist() |> 
     sort()
-
-# Some of these are almost perfectly correlated due to rare levels, so we cannot blindly trust them.
 ```
 
 ### Numeric Inputs
@@ -363,6 +362,8 @@ hotels_raw |>
 ## Transformations
 
 ```{r}
+num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
+
 hotels_raw |> select_if(is.numeric) |> skewness(na.rm = TRUE)
 for (v in num_vars) {
     p <- ggplot(hotels_raw, aes(.data[[v]])) +
@@ -392,6 +393,7 @@ for (v in num_vars) {
     print(p)
 } #visibily all improved, besides adr, so we will keep the transformation on all transformed variables, besides adr
 
+hotels_xf <- hotels_raw
 
 hotels_xf_final <- hotels_xf |>
     mutate(across(c(lead_time, stays_in_weekend_nights,
@@ -403,11 +405,9 @@ hotels_xf_final <- hotels_xf |>
 
 ## Imputation
 
-```{r}
-#For logistic regression: since we decided not to impute for the 7 observations with missing values, we removed those from the whole dataset so all models can learn from the same points
 
-hotels_raw2 <- hotels_raw |> 
-    mutate(country = fct_na_value_to_level(country, "Unknown")) # 447 total
-```
+For logistic regression: since we decided not to impute for the 7 observations with missing values, we removed those from the whole dataset so all models can learn from the same points
+
+
 
 # ...
