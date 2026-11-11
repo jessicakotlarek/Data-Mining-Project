@@ -306,7 +306,7 @@ dc_tree <- rpart(is_canceled ~ distribution_channel, data = hotels_raw)
 plot(as.party(dc_tree))
 ```
 
-## Re-categorizing levels of country
+## Re-categorizing levels of country and removing undesired variables
 
 ```{r}
 europe <- c("GBR", "ESP", "FRA", "IRL", "DEU", "ITA", "BEL", "NLD", "CHE", "AUT",
