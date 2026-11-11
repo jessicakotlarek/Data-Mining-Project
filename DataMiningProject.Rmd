@@ -322,7 +322,7 @@ hotels_raw <- hotels_raw |>
                                country %in% europe ~ "Europe",
                                TRUE ~ "Foreign"),
            country = as.factor(country)) |> 
-    select(-c(customer_type, meal, market_segment, distribution_channel, agent, reserved_room_type, arrival_date_year)) # drop these variables due to too many levels and/or sparse data; we do not believe these variables will help us out.
+    select(-c(meal, market_segment, distribution_channel, agent, reserved_room_type, arrival_date_year)) # drop these variables due to too many levels and/or sparse data; we do not believe these variables will help us out.
 
 hotels_raw |> group_by(country) |> summarise(n = n(), cancel_rate = mean(is_canceled == 1))
 ```
