@@ -409,6 +409,13 @@ hotels_raw |>
 
 - SAME TOP VARS AS ABOVE: This shows that the top 2 variables based on importance are lead_time and adr (average daily rate)
 
+```{r}
+hotels_raw <- hotels_raw %>%
+    select(-arrival_date_week_number) 
+```
+
+- Since arrival_date_week_number is not significant at the .05 level, and will already show a similar trend to arrival_date_month, we will drop it from the dataset.
+
 ## Transformations
 
 ```{r}
