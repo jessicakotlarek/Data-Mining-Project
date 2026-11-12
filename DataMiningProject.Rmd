@@ -45,18 +45,27 @@ mean(hotels_raw$is_canceled)  # overall cancellation rate
 
 - The overall cancellation rate is 37%
 
+- NOTE: this is before duplicates are removed
+
 # 2. Data Audit
 
 #### Removing Duplicate Rows
 
 ```{r}
 hotels_raw <- hotels_raw |> distinct()
+mean(hotels_raw$is_canceled)  # overall cancellation rate
 ```
+
+- After duplicates are removed, we are left with:
+
+  - 87,396 rows/bookings
+
+  - overall cancellation rate of 27.5% (class imbalance will need to be addressed later)
 
 Checking data point for missing Market Segment
 
 ```{r}
-hotels_raw |> filter(arrival_date_month == "August"& arrival_date_year == 2015 & arrival_date_week_number == 32 & is.na(children))
+hotels_raw |> filter(arrival_date_month == "August" & arrival_date_year == 2015 & arrival_date_week_number == 32 & is.na(children))
 ```
 
 #### Checking for missing values
@@ -76,7 +85,7 @@ The variables with missing data are:
 
 - distribution channel - 0 (5 Undefined)
 
-- company - 80361
+- company - 82137
 
 ## Dropping leakage variables
 
@@ -96,11 +105,12 @@ str(hotels_raw)
 table(hotels_raw$meal) # "Undefined" level
 hotels_raw <- hotels_raw |>
     mutate(meal = case_when(meal == "Undefined" ~ "SC", 
+                            # Combining Full Board with Hald Board since the categories are such a small percentage of the data and we want to reduce                                   categories
                             meal == "FB" ~ "HB", 
                             TRUE ~ meal),
            meal = factor(meal, levels = c("SC", "BB", "HB"), ordered = TRUE))
 
-mean(is.na(hotels_raw$company)) # percent of company variable missing (94.3%)
+mean(is.na(hotels_raw$company)) # percent of company variable missing (94%)
 hotels_raw <- hotels_raw |>
     mutate(has_company = ifelse(is.na(company), 0, 1)) 
         
@@ -115,7 +125,7 @@ hotels_raw <- hotels_raw |>
 str(hotels_raw)
 ```
 
-**Ordinal:** arrival_date_month, meal (SC \< BB \< HB \< FB)
+**Ordinal:** arrival_date_month, meal (SC \< BB \< HB)
 
 **Nominal:** hotel, country, market_segment, distribution_channel, reserved_room_type, deposit_type, agent, customer_type
 
@@ -138,12 +148,12 @@ sum(hotels_raw$adults + hotels_raw$children + hotels_raw$babies == 0, na.rm = TR
 
 ```{r}
 hotels_raw <- hotels_raw |>
-    mutate(market_segment = replace(market_segment, market_segment == "Undefined", NA),
-           distribution_channel = replace(distribution_channel, distribution_channel == "Undefined", NA),
-           adr = replace(adr, adr < 0 | adr > 1000, NA),      # ASSUMPTION: impossible / extreme nightly rates
-           agent = replace_na(as.character(agent), "None"),   # ASSUMPTION: no agent = booked directly
-           total_nights = stays_in_weekend_nights + stays_in_week_nights,
-           total_guests = adults + coalesce(children, 0) + babies) |>
+    mutate(market_segment = replace(market_segment, market_segment == "Undefined", NA), # 2 "Undefined" turning into NA
+           distribution_channel = replace(distribution_channel, distribution_channel == "Undefined", NA), # 5 "Undefined" turning into NA
+           adr = replace(adr, adr < 0 | adr > 1000, NA), # ASSUMPTION: impossible / extreme nightly rates
+           agent = as.factor(replace_na(as.character(agent), "None")),   # ASSUMPTION: no agent = booked directly
+           total_nights = stays_in_weekend_nights + stays_in_week_nights, # new variable
+           total_guests = adults + coalesce(children, 0) + babies) |> # new variable
     select(-company) # 94.3% of this variable is missing 
 
 # ASSUMPTION: bookings with zero guests are data errors
@@ -152,6 +162,14 @@ hotels_raw <- hotels_raw |> filter(total_guests > 0)
 # Drop unused levels 
 hotels_raw <- hotels_raw |> droplevels()
 ```
+
+- After this data cleaning, we are now left with:
+
+  -  87,230 bookings
+
+  - 29 potential variables
+
+  - 27.5% overall cancellation rate (same as above)
 
 ## Data Exploration (univariate)
 
@@ -176,8 +194,6 @@ missprop <- hotels_raw |> summarise(across(everything(), ~ sum(is.na(.)) / lengt
 print(missprop, width = Inf)
 ```
 
-None of the variables that have missing data are missing THAT much of their data, which will hopefully make imputation easier and more reliable (we previously removed company with \~94.3% of its observations missing)
-
 Checking how many observations have any missing values in the dataset, besides country
 
 ```{r}
@@ -192,11 +208,11 @@ hotels_raw <- hotels_raw |>
   filter(if_all(-country, ~ !is.na(.)))
 ```
 
-#### Distribution plots
+## Distribution plots
 
-#### Numeric plots
+### Numeric plots
 
-```{r, fig.width = 4, fig.height = 3}
+```{r, fig.width = 5, fig.height = 3}
 num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
 
 for (v in num_vars) {
@@ -207,10 +223,10 @@ for (v in num_vars) {
 }
 ```
 
-\*\* Ingishts:
+- lead time is visibly very right skewed
 
 ```{r}
-# This is odd
+# Is this concerning?
 sum(hotels_raw$total_guests > 10, na.rm = TRUE)
 sum(hotels_raw$total_guests > 20, na.rm = TRUE)
 ```
@@ -236,7 +252,17 @@ for (v in cat_vars) {
 }
 ```
 
-\*\* Ingishts:
+- Agent categories are the ID of the travel agency that made the booking, random numbers, not really possible to interpret
+
+- There's no documentation about what each of the reserved room types represent, so how do we interpret this?
+
+- For deposit type, so much of the data is 'No Deposit' but when we look at the mosaic plot this variable seems meaningful
+
+- Majority of the bookings have no company
+
+- Most bookings are first time guests ('is_repeated_guest' variable)
+
+- For distribution channel, TA" means "Travel Agents" and "TO" means "Tour Operators"
 
 ## Data Exploration (bivariate)
 
@@ -245,7 +271,7 @@ for (v in cat_vars) {
 ```{r}
 num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
 cat_vars <- hotels_raw |> select(where(is.factor)) |> names()
-cat_vars <- setdiff(cat_vars, c("is_canceled", "country", "agent"))  # drop target + too many levels
+cat_vars <- setdiff(cat_vars, c("is_canceled", "agent", "country"))  # drop target + too many levels
 ```
 
 #### Numeric plots
@@ -259,7 +285,9 @@ for (v in num_vars) {
 }
 ```
 
-\*\* Ingishts:
+- The distributions look very similar for most of these
+
+- For date, I think we could probably drop arrival_date_year but keep arrival_date_day_of_month and arrival_date_week_number since there might be more monthly or seasonal patterns
 
 #### Categorical plots
 
@@ -273,8 +301,6 @@ for (v in cat_vars) {
 }
 ```
 
-\*\* Ingishts:
-
 #### Categorical mosaic plots
 
 ```{r, fig.width = 6, fig.height = 5}
@@ -286,7 +312,7 @@ for (v in cat_vars) {
 }
 ```
 
-\*\* Ingishts:
+- Deposit type seems to have meaning even though 'No Deposit' has the majority of the data
 
 #### Summary stats by target (is_canceled)
 
@@ -295,6 +321,12 @@ hotels_raw |> group_by(is_canceled) |> skim()
 ```
 
 ## Decision Tree to help consolidate levels
+
+- They both only return one node (even when we lower the cp threshold)
+
+  - Becuause no category has more than 50% cancellations
+
+  - Not necessary
 
 ```{r}
 # Market Segment
@@ -322,10 +354,22 @@ hotels_raw <- hotels_raw |>
                                country %in% europe ~ "Europe",
                                TRUE ~ "Foreign"),
            country = as.factor(country)) |> 
-    select(-c(meal, market_segment, distribution_channel, agent, reserved_room_type, arrival_date_year)) # drop these variables due to too many levels and/or sparse data; we do not believe these variables will help us out.
+    select(-c(meal, agent, reserved_room_type, arrival_date_year)) # drop these variables due to too many levels and/or sparse data; we do not believe these variables will help us out.
 
 hotels_raw |> group_by(country) |> summarise(n = n(), cancel_rate = mean(is_canceled == 1))
 ```
+
+- We dropped meal, agent, reserved_room_type, arrival_date_year
+
+  - Too many levels
+
+  - No documentation on categories/not interpretable
+
+  - Sparse data
+
+- We reorganized country to be either Portugal, Europe minus Portugal, or Foreign/Other to reduce the number of categoried
+
+  - The hotels are in Portugal so we thought this would make sense
 
 ## Variable Importance
 
@@ -338,6 +382,8 @@ hotels_raw |>
     sort()
 ```
 
+- The 4 with a p-value of `0.000000e+00` are country, market_segment, distribution_channel and deposit_type
+
 ### Numeric Inputs
 
 Numerical input - t stat
@@ -349,6 +395,8 @@ hotels_raw |>
     sort()
 ```
 
+- This shows that the top 2 numeric variables based on importance are lead_time and adr (average daily rate)
+
 Numeric input - area under ROC curve for predicting target, using `caret`
 
 ```{r}
@@ -359,10 +407,12 @@ hotels_raw |>
     arrange(desc(X1)) 
 ```
 
+- SAME TOP VARS AS ABOVE: This shows that the top 2 variables based on importance are lead_time and adr (average daily rate)
+
 ## Transformations
 
 ```{r}
-num_vars <- hotels_raw |> select(where(is.numeric)) |> names()
+num_vars <- hotels_raw |> select(where(is.numeric)) |> names() 
 
 hotels_raw |> select_if(is.numeric) |> skewness(na.rm = TRUE)
 for (v in num_vars) {
@@ -373,7 +423,7 @@ for (v in num_vars) {
 }
 TransformParams <- hotels_raw |>
     preProcess(method = "YeoJohnson")
-TransformParams$yj #based on YeoJohnson and looking at skewness/graph distributions, we will log transform lead_time, stays_in_weekend_nights, stays_in_week_nights, total_nights, total_guests, adr by log(x + 1)
+TransformParams$yj # based on YeoJohnson and looking at skewness/graph distributions, we will log transform lead_time, stays_in_weekend_nights, stays_in_week_nights, total_nights, total_guests, adr by log(x + 1)
 
 hotels_xf <- hotels_raw
 
@@ -395,7 +445,6 @@ for (v in num_vars) {
 
 
 # Trying the Box-Cox Transformation on ADR
-
 hotels_raw |>  
     as.data.frame() |>  
     predict(TransformParams, newdata = _) |> 
@@ -403,8 +452,6 @@ hotels_raw |>
     ggplot() + 
     aes(x = adr) + 
     geom_histogram()
-
-
 
 hotels_raw |>  
     mutate(adr = sqrt(adr)) |> 
@@ -422,16 +469,28 @@ hotels_xf_final <- hotels_xf |>
         ~ log(. + 1)), 
         adr = sqrt(adr))
 
-
-
-
 ```
+
+- After exploring potential transformations, we ended up LOG TRANSFORMING the variables:
+
+  - lead_time
+
+  - stays_in_weekend_nights
+
+  - stays_in_week_nights
+
+  - total_nights
+
+  - total_guests
+
+- SRT TRANSFORMING
+
+  - adr
 
 ## Imputation
 
+Our dataset is already complete case (we dropped the 7 observations with NAs)
 
-For logistic regression: since we decided not to impute for the 7 observations with missing values, we removed those from the whole dataset so all models can learn from the same points
+For logistic regression AND tree based models: our dataset will be the same for all models since since we decided not to impute for the 7 missing values, rather we dropped these observations
 
-
-
-# ...
+- So, all models can learn from the same points
